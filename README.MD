@@ -127,8 +127,10 @@ binlog.kafka.group-id=xxx
 binlog.kafka.topic=xxx
 
 #ds
-binlog.datasource.key=ialert
-binlog.datasource.tag=ialert204
+binlog.datasource.url=xxx
+binlog.datasource.username=xxx
+binlog.datasource.password=xxx
+binlog.datasource.driver=xxx
 
 ```
 
