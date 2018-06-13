@@ -85,19 +85,20 @@ change-data-captrue可以让你用少量的配置达到此目的。
         <change-source>
             <table>user</table>
             <primary-key>id</primary-key>
-            <root-key>id</root-key>
             <update-time-field>modify_time</update-time-field>
         </change-source>
+        
+        <root-key>id</root-key>
         <!--构造数据结构-->
         <node>
             <name>user</name>
             <!--user数据-->
-            <sql>select * from user where id=#{root_key}</sql>
+            <sql>select * from user where id=:id</sql>
             <multi>false</multi>
             <node>
                 <name>order</name>
                 <!--user下的订单-->
-                <sql>select * from orders where user_id=#{root_key}</sql>
+                <sql>select * from orders where user_id=:id</sql>
                 <!--一个user多笔订单-->
                 <multi>true</multi>
             </node>
@@ -106,7 +107,8 @@ change-data-captrue可以让你用少量的配置达到此目的。
 
 </processors>
 ```
-根据上面的node-tree, 组件会将`select * from user where id=#{root_key}`作为root对象的属性;并且将`select * from orders where user_id=#{root_key}`作为 root子对象，名为order,类型为数组
+- 根据上面的node-tree, 组件会将`select * from user where id=:id`作为root对象的属性;并且将`select * from orders where user_id=:id`作为 root子对象，名为order,类型为数组
+- `:name`是占位符，代表user表的一列
 
 3.配置properties:
 
@@ -122,43 +124,42 @@ binlog.factory.config-file=processor.xml
 binlog.kafka.bootstrap-servers=xxx.xxx.xxx.xxx:9092
 binlog.kafka.group-id=xxx
 binlog.kafka.topic=xxx
+
+#ds
+binlog.datasource.key=ialert
+binlog.datasource.tag=ialert204
+
 ```
 
 3.配置定时任务
 
 ```java
-
-
 @Component
 @Slf4j
 public class RowScannerExecutor {
 
+    public static final String PROCESSOR_NAME = "case";
     @Autowired
-    private List<TaskProcessor> taskProcessors;
+    private ProcessorFactory processorFactory;
 
     @Scheduled(cron="")
     public boolean execute() {
-        Integer intervalHours = 2;
-        LocalDateTime begin = LocalDateTime.now().truncatedTo(ChronoUnit.HOURS);
-        LocalDateTime end = begin.plusHours(intervalHours);
-        TimeRange timeRange = new TimeRange().withBegin(translate(begin)).withEnd(translate(end));
+        TaskProcessor taskProcessor = processorFactory.getTaskProcessor(PROCESSOR_NAME).orElseThrow(
+            () -> new IllegalStateException("processor not state of " + PROCESSOR_NAME)
+        );
         try {
-            for (TaskProcessor taskProcessor : taskProcessors) {
-                taskProcessor.scan(timeRange);
-            }
-            log.info("binlog补偿任务完成, time in {}", timeRange);
+            log.info("binlog补偿任务开始");
+            List<Map<String, Object>> rawRows = getRows();
+            List<Row> rows = rawRows.stream().map(MapRow::new).collect(Collectors.toList());
+            taskProcessor.scan(rows);
+            log.info("binlog补偿任务完成");
             return true;
         } catch (Exception e) {
-            log.error("binlog补偿任务执行中断, time in {}", timeRange, e);
+            log.error("binlog补偿任务执行中断",e);
             return false;
         }
 
     }
-
-    private Timestamp translate(LocalDateTime begin) {
-        return Timestamp.from(begin.atZone(ZoneId.systemDefault()).toInstant());
-    }
-
 }
 ```
 
@@ -194,14 +195,14 @@ public class RowScannerExecutor {
         <change-source>
             <table>user</table>
             <primary-key>id</primary-key>
-            <root-key>id</root-key>
             <update-time-field>modify_time</update-time-field>
         </change-source>
+        <root-key>id</root-key>
         <!--构造数据结构-->
         <node>
             <name>user</name>
             <!--案件数据-->
-            <sql>select * from user where id=#{root_key}</sql>
+            <sql>select * from user where id=:id</sql>
             <fields>
             	<field converter="stringSplitter" name="tag"/>
             </fields>
@@ -209,7 +210,7 @@ public class RowScannerExecutor {
             <node>
                 <name>order</name>
                 <!--案件下的订单-->
-                <sql>select * from orders where user_id=#{root_key}</sql>
+                <sql>select * from orders where user_id=:id</sql>
                 <!--一个案件下多笔订单-->
                 <multi>true</multi>
             </node>

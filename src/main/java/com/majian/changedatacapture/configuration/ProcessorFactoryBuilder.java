@@ -2,24 +2,27 @@ package com.majian.changedatacapture.configuration;
 
 import com.majian.changedatacapture.core.Converter;
 import com.majian.changedatacapture.core.ConverterRegistry;
+import com.majian.changedatacapture.core.DefaultRowMapper;
 import com.majian.changedatacapture.core.Refresher;
+import com.majian.changedatacapture.core.RowMapper;
+import com.majian.changedatacapture.core.SqlRowMapper;
 import com.majian.changedatacapture.core.repository.ElasticRepository;
 import com.majian.changedatacapture.core.repository.MysqlRepository;
+import com.majian.changedatacapture.core.stream.PerformanceRecorder;
 import com.majian.changedatacapture.core.stream.StreamProcessor;
-import com.majian.changedatacapture.core.task.ExpiredJudge;
-import com.majian.changedatacapture.core.task.Filter;
 import com.majian.changedatacapture.core.task.TaskProcessor;
 import com.thoughtworks.xstream.XStream;
 import java.io.InputStream;
 import javax.sql.DataSource;
 import org.elasticsearch.client.Client;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
 public class ProcessorFactoryBuilder {
 
     private ProcessorFactoryConfiguration factoryConfiguration;
     private ElasticRepository elasticRepository;
     private MysqlRepository mysqlRepository;
+    private PerformanceRecorder performanceRecorder;
 
     public ProcessorFactoryBuilder withConfigLocation(String location) {
         XStream xStream = new XStream();
@@ -36,11 +39,12 @@ public class ProcessorFactoryBuilder {
         xStream.useAttributeFor(Field.class, "converter");
         xStream.aliasAttribute(ProcessorConfiguration.class, "changeSource", "change-source");
         xStream.aliasField("update-time-field", ChangeSource.class, "updateTimeField");
-        xStream.aliasField("root-key", ChangeSource.class, "rootKey");
         xStream.aliasField("primary-key", ChangeSource.class, "primaryKey");
-
+        xStream.aliasField("mapper", ProcessorConfiguration.class, "mapper");
+        xStream.aliasField("root-key", ProcessorConfiguration.class, "rootKey");
         InputStream resourceAsStream = ProcessorFactoryBuilder.class.getClassLoader().getResourceAsStream(location);
         factoryConfiguration = (ProcessorFactoryConfiguration) xStream.fromXML(resourceAsStream);
+        factoryConfiguration.checkValid();
         return this;
     }
 
@@ -50,7 +54,12 @@ public class ProcessorFactoryBuilder {
     }
 
     public ProcessorFactoryBuilder withDataSource(DataSource dataSource) {
-        mysqlRepository = new MysqlRepository(new JdbcTemplate(dataSource));
+        mysqlRepository = new MysqlRepository(new NamedParameterJdbcTemplate(dataSource));
+        return this;
+    }
+
+    public ProcessorFactoryBuilder withPerformanceRecorder(boolean recordEnabled, String recordType) {
+        this.performanceRecorder = new PerformanceRecorder(elasticRepository, recordEnabled, recordType);
         return this;
     }
 
@@ -64,23 +73,29 @@ public class ProcessorFactoryBuilder {
     public ProcessorFactory build() {
         ProcessorFactory processorFactory = new ProcessorFactory();
         for (ProcessorConfiguration processorConfiguration : factoryConfiguration.getProcessors()) {
-            ElasticConfiguration elasticConfiguration = processorConfiguration.getElasticConfiguration();
             ChangeSource changeSource = processorConfiguration.getChangeSource();
-            Node root = processorConfiguration.getNode();
             String processorName = processorConfiguration.getName();
+            RowMapper rowMapper = getRowMapper(processorConfiguration.getMapper());
+            Refresher refresher = new Refresher(mysqlRepository, elasticRepository, processorConfiguration, rowMapper);
+            StreamProcessor streamProcessor = new StreamProcessor(refresher, changeSource, processorName,
+                performanceRecorder);
 
-            Refresher refresher = new Refresher(mysqlRepository, elasticRepository, root, elasticConfiguration);
-            StreamProcessor streamProcessor = new StreamProcessor(refresher, changeSource, processorName);
-
-            ExpiredJudge expiredJudge = new ExpiredJudge(mysqlRepository, elasticRepository,changeSource, elasticConfiguration);
-            Filter filter = new Filter(mysqlRepository, changeSource);
-            TaskProcessor taskProcessor = new TaskProcessor(expiredJudge, refresher, filter, processorName);
+            TaskProcessor taskProcessor = new TaskProcessor(refresher, processorName, changeSource);
 
             processorFactory.addStreamProcessor(streamProcessor);
             processorFactory.addTaskProcessor(taskProcessor);
 
         }
         return processorFactory;
+    }
+
+    private RowMapper getRowMapper(String mapper) {
+        if (mapper == null) {
+            return new DefaultRowMapper();
+        } else {
+            return new SqlRowMapper(mapper, mysqlRepository);
+        }
+
     }
 
 }

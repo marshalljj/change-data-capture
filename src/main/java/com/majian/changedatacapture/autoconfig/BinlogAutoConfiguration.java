@@ -7,6 +7,7 @@ import com.majian.changedatacapture.core.converters.JsonToStringArrayConverter;
 import com.majian.changedatacapture.core.stream.BinlogProcessor;
 import com.majian.changedatacapture.core.task.TaskProcessor;
 import java.util.List;
+import javax.annotation.Resource;
 import javax.sql.DataSource;
 import org.elasticsearch.client.Client;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -16,16 +17,25 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 
 @Configuration
-@Import({ElasticClientConfiguration.class,BinlogKafkaConfiguration.class})
+@Import({
+    ElasticClientConfiguration.class,
+    BinlogKafkaConfiguration.class,
+    BinlogDataSourceAutoConfiguration.class})
 public class BinlogAutoConfiguration {
 
-    @Autowired
-    private Client client;
+
     @Value("${binlog.elasticsearch.index}")
     private String index;
     @Value("${binlog.factory.config-file}")
     private String configFile;
-    @Autowired
+    @Value("${binlog.stream.record.es-type:stream_flow}")
+    private String recordType;
+    @Value("${binlog.stream.record.enabled:true}")
+    private boolean recordEnabled;
+
+    @Resource(name = "binlogElasticClient")
+    private Client client;
+    @Resource(name = "binlogDataSource")
     private DataSource dataSource;
 
     @Bean
@@ -34,6 +44,7 @@ public class BinlogAutoConfiguration {
             .withConfigLocation(configFile)
             .withElasticsearch(client, index)
             .withDataSource(dataSource)
+            .withPerformanceRecorder(recordEnabled, recordType)
             .registerConverters(new JsonToStringArrayConverter(), new JsonToMapConverter())
             .build();
     }

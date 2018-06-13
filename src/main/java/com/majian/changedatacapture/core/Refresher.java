@@ -1,11 +1,12 @@
 package com.majian.changedatacapture.core;
 
+import com.google.common.collect.Lists;
 import com.majian.changedatacapture.configuration.ElasticConfiguration;
 import com.majian.changedatacapture.configuration.Field;
 import com.majian.changedatacapture.configuration.Node;
+import com.majian.changedatacapture.configuration.ProcessorConfiguration;
 import com.majian.changedatacapture.core.repository.ElasticRepository;
 import com.majian.changedatacapture.core.repository.MysqlRepository;
-import com.google.common.collect.Lists;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -21,29 +22,36 @@ public class Refresher {
 
     private MysqlRepository mysqlRepository;
     private ElasticRepository elasticRepository;
-    private Node tree;
-    private ElasticConfiguration elasticConfiguration;
+    private ProcessorConfiguration configuration;
+    private RowMapper rowMapper;
 
     public Refresher(MysqlRepository mysqlRepository,
-        ElasticRepository elasticRepository, Node tree,
-        ElasticConfiguration elasticConfiguration) {
+        ElasticRepository elasticRepository,
+        ProcessorConfiguration configuration, RowMapper rowMapper) {
         this.mysqlRepository = mysqlRepository;
         this.elasticRepository = elasticRepository;
-        this.tree = tree;
-        this.elasticConfiguration = elasticConfiguration;
+        this.configuration = configuration;
+        this.rowMapper = rowMapper;
     }
 
-    public void refresh(Object key, Date date) {
-        Optional<Map<String, Object>> optional = load(key);
+    public void refresh(Row row, Date date) {
+        List<Row> newRows = rowMapper.map(row);
+        newRows.forEach(item -> doRefresh(item, date));
+
+    }
+
+    private void doRefresh(Row row, Date date) {
+        Optional<Map<String, Object>> optional = load(row);
         optional.ifPresent(data -> {
             data.put(ElasticConfiguration.ES_UPDATE_TIME_FIELD, date);
-            elasticRepository.put(elasticConfiguration.getType(),key, data);
+            Object rootKeyValue = row.getValue(configuration.getRootKey());
+            elasticRepository.put(configuration.getElasticSearchType(), rootKeyValue, data);
         });
     }
 
-    private Optional<Map<String, Object>> load(Object id) {
-        String sqlTemplate = tree.getSql();
-        Map<String, Object> root = mysqlRepository.queryForMap(SqlParser.parseSql(sqlTemplate, id));
+    private Optional<Map<String, Object>> load(Row row) {
+        Node tree = configuration.getNode();
+        Map<String, Object> root = mysqlRepository.queryForMap(tree.getSql(), row.toMap());
         if (root == null) {
             return Optional.empty();
         }
@@ -51,13 +59,13 @@ public class Refresher {
         List<Node> children = tree.getChildren();
         for (Node childNode : children) {
             if (!childNode.isMulti()) {
-                Map child = mysqlRepository.queryForMap(SqlParser.parseSql(childNode.getSql(), id));
+                Map child = mysqlRepository.queryForMap(childNode.getSql(), row.toMap());
                 if (child != null) {
                     child = processField(child, childNode.getFields());
                 }
                 root.put(childNode.getName(), child);
             } else {
-                List<Map<String, Object>> child = mysqlRepository.queryForList(SqlParser.parseSql(childNode.getSql(), id));
+                List<Map<String, Object>> child = mysqlRepository.queryForList(childNode.getSql(), row.toMap());
                 if (child != null) {
                     child = batchProcessField(child, childNode.getFields());
                 }

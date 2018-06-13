@@ -1,52 +1,46 @@
 package com.majian.changedatacapture.core.task;
 
-import com.majian.changedatacapture.core.GsonUtils;
+import com.majian.changedatacapture.configuration.ChangeSource;
 import com.majian.changedatacapture.core.Refresher;
+import com.majian.changedatacapture.core.Row;
+import java.util.Date;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class TaskProcessor {
 
-    private ExpiredJudge expiredJudge;
     private Refresher refresher;
-    private Filter filter;
     private String name;
+    private ChangeSource changeSource;
 
-    public TaskProcessor(ExpiredJudge expiredJudge, Refresher refresher,
-        Filter filter, String name) {
-        this.expiredJudge = expiredJudge;
+    public TaskProcessor(Refresher refresher, String name,
+        ChangeSource changeSource) {
         this.refresher = refresher;
-        this.filter = filter;
         this.name = name;
+        this.changeSource = changeSource;
     }
 
     public String getName() {
         return name;
     }
 
-    public void scan(TimeRange timeRange) {
-        List<Pair> pairs = filter.filterIdByUpdateTimeRange(timeRange);
-        pairs.parallelStream()
-            .forEach(this::processForEach);
 
-    }
-
-    private void processForEach(Pair pair) {
+    private void processForEach(Row row) {
+        String table = changeSource.getTable();
+        Object id = row.getValue(changeSource.getPrimaryKey());
         try {
-            if (expiredJudge.isExpired(pair)) {
-                refresher.refresh(pair.getRootKey(), pair.getUpdateTime());
-                log.info("binlog compensation completed: {}", GsonUtils.toJson(pair));
-            }
+            Date updateTime = (Date) row.getValue(changeSource.getUpdateTimeField());
+            refresher.refresh(row, updateTime);
+            log.info("binlog compensation completed: table={}, id={}", table, id);
         } catch (Exception e) {
-            log.error("binlog compensation failed: {}", GsonUtils.toJson(pair), e);
+            log.error("binlog compensation failed: table={}, id={}", table, id, e);
         }
     }
 
-
-
-
-
+    public void scan(List<? extends Row> rows) {
+        rows.parallelStream().forEach(this::processForEach);
+    }
 
 
 }

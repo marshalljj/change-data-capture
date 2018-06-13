@@ -6,6 +6,5 @@ import lombok.Data;
 public class ChangeSource {
     private String table;
     private String primaryKey;
-    private String rootKey;
     private String updateTimeField;
 }

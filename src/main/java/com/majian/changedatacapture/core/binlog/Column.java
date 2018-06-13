@@ -6,5 +6,5 @@ public interface Column {
 
     int getSqlType();
 
-    CharSequence getName();
+    String getName();
 }

@@ -8,4 +8,7 @@ public class ProcessorFactoryConfiguration {
 
     private List<ProcessorConfiguration> processors;
 
+    public void checkValid() {
+        processors.forEach(ProcessorConfiguration::checkValid);
+    }
 }
