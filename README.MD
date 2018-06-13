@@ -109,6 +109,7 @@ change-data-captrue可以让你用少量的配置达到此目的。
 ```
 - 根据上面的node-tree, 组件会将`select * from user where id=:id`作为root对象的属性;并且将`select * from orders where user_id=:id`作为 root子对象，名为order,类型为数组
 - `:name`是占位符，代表user表的一列
+- root-key是聚合对象对id,也是es的doc_id。
 
 3.配置properties:
 
