@@ -58,15 +58,7 @@ change-data-captrue可以让你用少量的配置达到此目的。
 - 同步方式：binlog实时同步+定时任务增量补偿
 
 
-## maven
 
-```xml
-<dependency>
-    <groupId>com.majian</groupId>
-    <artifactId>change-data-capture</artifactId>
-    <version>1.0.3-SNAPSHOT</version>
-</dependency>
-```
 ## quick start
 1.引入启用binlog
 
@@ -134,7 +126,7 @@ binlog.datasource.driver=xxx
 
 ```
 
-3.配置定时任务
+4.配置定时任务
 
 ```java
 @Component
