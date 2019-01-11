@@ -14,13 +14,6 @@ public class MysqlRepository {
         this.namedParameterJdbcTemplate = namedParameterJdbcTemplate;
     }
 
-    public Map<String, Object> queryForMap(String sql, Map<String, ?> paramMap) {
-        List<Map<String, Object>> maps = queryForList(sql, paramMap);
-        if (CollectionUtils.isEmpty(maps)) {
-            return null;
-        }
-        return maps.get(0);
-    }
 
     public List<Map<String, Object>> queryForList(String sql, Map<String, ?> paramMap) throws DataAccessException {
         return namedParameterJdbcTemplate.queryForList(sql, paramMap);

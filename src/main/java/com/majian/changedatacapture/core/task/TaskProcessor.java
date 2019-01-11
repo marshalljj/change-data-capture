@@ -1,9 +1,7 @@
 package com.majian.changedatacapture.core.task;
 
-import com.majian.changedatacapture.configuration.ChangeSource;
-import com.majian.changedatacapture.core.Refresher;
 import com.majian.changedatacapture.core.Row;
-import java.util.Date;
+import com.majian.changedatacapture.core.stream.Refresher;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 
@@ -12,13 +10,10 @@ public class TaskProcessor {
 
     private Refresher refresher;
     private String name;
-    private ChangeSource changeSource;
 
-    public TaskProcessor(Refresher refresher, String name,
-        ChangeSource changeSource) {
+    public TaskProcessor(Refresher refresher, String name) {
         this.refresher = refresher;
         this.name = name;
-        this.changeSource = changeSource;
     }
 
     public String getName() {
@@ -27,11 +22,10 @@ public class TaskProcessor {
 
 
     private void processForEach(Row row) {
-        String table = changeSource.getTable();
-        Object id = row.getValue(changeSource.getPrimaryKey());
+        String table = refresher.tableName();
+        Object id = row.getValue(refresher.primaryKey());
         try {
-            Date updateTime = (Date) row.getValue(changeSource.getUpdateTimeField());
-            refresher.refresh(row, updateTime);
+            refresher.refresh(row);
             log.info("binlog compensation completed: table={}, id={}", table, id);
         } catch (Exception e) {
             log.error("binlog compensation failed: table={}, id={}", table, id, e);
